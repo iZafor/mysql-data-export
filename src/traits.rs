@@ -22,7 +22,7 @@ impl ColumnTypeEx for ColumnType {
 }
 
 pub trait RowEx {
-    fn get_secure<T: FromValue>(&self, i: usize) -> Option<T>; 
+    fn get_secure<T: FromValue>(&self, i: usize) -> Option<T>;
 
     fn get_value(&self, i: usize) -> String;
 }
