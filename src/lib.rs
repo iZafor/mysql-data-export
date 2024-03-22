@@ -30,15 +30,11 @@ pub fn run() -> MError<()> {
         let selects = get_selected_tables(&mut stdout, &tables)?;
         let tables = (selects[0] == 0)
             .then(|| {
-                let mut idx = 0;
                 selects
                     .iter()
                     .skip(1)
-                    .filter_map(|i| {
-                        let res = (*i == 1).then_some(&tables[idx]);
-                        idx += 1;
-                        res
-                    })
+                    .enumerate()
+                    .filter_map(|(idx, val)| (*val == 1).then_some(&tables[idx]))
                     .collect::<Vec<_>>()
             })
             .unwrap_or(tables.iter().map(|t| t).collect::<Vec<_>>());

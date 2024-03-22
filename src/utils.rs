@@ -1,9 +1,6 @@
 use crate::{traits::*, MError};
 use crossterm::{
-    cursor,
-    event::{read as ev_read, Event, KeyCode, KeyEvent},
-    style::Print,
-    ExecutableCommand,
+    cursor, event::{read as ev_read, Event, KeyCode, KeyEvent}, style::Print, ExecutableCommand
 };
 use mysql::{prelude::*, Row};
 use std::{
@@ -121,25 +118,56 @@ pub fn export_tables(
 }
 
 pub fn read_to_string(stdout: &mut StdoutLock, buf: &mut String, obscure: bool) -> MError<()> {
+    let (buf_st_col, buf_st_row) = cursor::position()?;
     loop {
+        let (curr_col, _) = cursor::position()?;
         match ev_read()? {
             Event::Key(ev) => {
                 let KeyEvent { code, .. } = ev;
                 match code {
                     KeyCode::Char(c) => {
-                        buf.push(c);
-                        if obscure {
-                            stdout.execute(Print('*'))?;
+                        let idx = (curr_col - buf_st_col) as usize;
+                        if idx < buf.len() {
+                            buf.insert(idx, c);
                         } else {
-                            stdout.execute(Print(c))?;
+                            buf.push(c);
                         }
+
+                        for c in buf.chars().skip(idx) {
+                            if obscure {
+                                stdout.execute(Print('*'))?;
+                            } else {
+                                stdout.execute(Print(c))?;
+                            }
+                        }
+                        stdout.execute(cursor::MoveTo(curr_col + 1, buf_st_row))?;
                     }
                     KeyCode::Backspace => {
-                        if let Some(_) = buf.pop() {
+                        let idx = (curr_col - buf_st_col) as usize;
+                        if  idx > 0 && idx <= buf.len() {
+                            buf.remove(idx - 1);
+                            stdout.execute(cursor::MoveLeft(1))?;
+
+                            for c in buf.chars().skip(idx - 1) {
+                                if obscure {
+                                    stdout.execute(Print('*'))?;
+                                } else {
+                                    stdout.execute(Print(c))?;
+                                }
+                            }
                             stdout
-                                .execute(cursor::MoveLeft(1))?
                                 .execute(Print(' '))?
-                                .execute(cursor::MoveLeft(1))?;
+                                .execute(cursor::MoveTo(curr_col - 1, buf_st_row))?;
+                        }
+                    }
+                    KeyCode::Left => {
+                        if curr_col - 1 >= buf_st_col {
+                            stdout.execute(cursor::MoveLeft(1))?;
+                        }
+                    }
+                    KeyCode::Right => {
+                        if curr_col + 1 <= buf_st_col + buf.len() as u16 {
+                            stdout.execute(cursor::MoveRight(1))?;
                         }
                     }
                     _ => break,
