@@ -1,0 +1,1 @@
+__Terminal based application written in `rust` to exprot `tables` to `csv` from `MySql` databases. Currently it works on `localhost` only having the user default to `root` and port set to `3306`.__ 
