@@ -1,7 +1,7 @@
 mod traits;
 pub mod utils;
 
-use crossterm::{self, cursor, terminal, ExecutableCommand};
+use crossterm::{self, cursor, style::Print, terminal, ExecutableCommand};
 use mysql::{prelude::Queryable, OptsBuilder};
 use std::io::stdout;
 use utils::*;
@@ -9,42 +9,58 @@ use utils::*;
 type MError<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub fn run() -> MError<()> {
-    let mut stdout = stdout().lock();
     terminal::enable_raw_mode()?;
-    stdout
+
+    stdout()
         .execute(terminal::Clear(terminal::ClearType::All))?
+        .execute(terminal::EnableLineWrap)?
         .execute(cursor::MoveTo(0, 0))?;
 
     // establish connection
+    let pass = read_pass()?;
     let mut conn = mysql::Conn::new(
         OptsBuilder::new()
             .ip_or_hostname(Some("127.0.0.1"))
             .user(Some("root"))
-            .pass(Some(read_pass(&mut stdout)?)),
+            .pass(Some(&pass)),
     )?;
-    conn.select_db(&read_db_name(&mut stdout)?)?;
 
-    // export tables
-    let tables = conn.exec::<String, &str, ()>("SHOW TABLES", ())?;
-    if !tables.is_empty() {
-        let selects = get_selected_tables(&mut stdout, &tables)?;
-        let tables = (selects[0] == 0)
-            .then(|| {
-                selects
-                    .iter()
-                    .skip(1)
-                    .enumerate()
-                    .filter_map(|(idx, val)| (*val == 1).then_some(&tables[idx]))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or(tables.iter().map(|t| t).collect::<Vec<_>>());
+    // select databases
+    let dbs = conn.exec::<String, &str, ()>("SHOW DATABASES", ())?;
+    if !dbs.is_empty() {
+        let dbs = get_selectetions(&dbs, "Select Databases:")?;
+        if !dbs.is_empty() {
+            let mut dir_buf = String::new();
+            stdout()
+                .execute(cursor::MoveToNextLine(1))?
+                .execute(Print("Export directory: "))?;
+            read_to_string(&mut dir_buf, false)?;
+            std::fs::create_dir(&dir_buf)?;
 
-        if !tables.is_empty() {
-            export_tables(&mut stdout, tables, &mut conn)?;
+            for db in dbs {
+                let mut conn = mysql::Conn::new(
+                    OptsBuilder::new()
+                        .ip_or_hostname(Some("127.0.0.1"))
+                        .user(Some("root"))
+                        .pass(Some(&pass))
+                        .db_name(Some(db)),
+                )?;
+
+                // export tables
+                let tables = conn.exec::<String, &str, ()>("SHOW TABLES", ())?;
+                if !tables.is_empty() {
+                    let tables = get_selectetions(&tables, &format!("Select Tables for {db}: "))?;
+                    if !tables.is_empty() {
+                        let export_dir = format!("{dir_buf}/{db}");
+                        std::fs::create_dir(&export_dir)?;
+                        export_tables(tables, &mut conn, &export_dir)?;
+                    }
+                }
+            }
         }
     }
 
-    stdout
+    stdout()
         .execute(terminal::Clear(terminal::ClearType::All))?
         .execute(cursor::MoveTo(0, 0))?;
     terminal::disable_raw_mode()?;
